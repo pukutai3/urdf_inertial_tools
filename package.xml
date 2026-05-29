@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <package format="3">
-  <name>urdf_inertial_tools</name>
+  <name>urdf_xacro_tuner</name>
   <version>0.0.1</version>
-  <description>Tools to generate URDF inertial from STL meshes</description>
+  <description>Tools to tune URDF/xacro mass, inertia, and joint parameters</description>
 
   <maintainer email="ubuntu@todo.todo">ubuntu</maintainer>
   <license>MIT</license>
@@ -10,6 +10,7 @@
   <buildtool_depend>ament_python</buildtool_depend>
 
   <exec_depend>python3</exec_depend>
+  <exec_depend>python3-vtk9</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
@@ -18,4 +19,3 @@
     <build_type>ament_python</build_type>
   </export>
 </package>
-
