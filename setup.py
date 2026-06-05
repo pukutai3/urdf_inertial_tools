@@ -7,8 +7,23 @@ package_name = 'urdf_xacro_tuner'
 base_dir = Path(__file__).resolve().parent
 
 
+def source_dir() -> Path:
+    candidates = [base_dir, *base_dir.parents, Path.cwd(), *Path.cwd().parents]
+    for candidate in candidates:
+        direct = candidate / package_name
+        if (candidate / 'launch').exists() and (candidate / 'package.xml').exists():
+            return candidate
+        if (direct / 'launch').exists() and (direct / 'package.xml').exists():
+            return direct
+        nested = candidate / 'src' / 'urdf_inertial_tools'
+        if (nested / 'launch').exists() and (nested / 'package.xml').exists():
+            return nested
+    return base_dir
+
+
 def relpaths(pattern: str) -> list[str]:
-    files = sorted(base_dir.glob(pattern))
+    root = source_dir()
+    files = sorted(root.glob(pattern))
     return [os.path.relpath(path, Path.cwd()) for path in files]
 
 setup(
