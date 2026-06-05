@@ -98,9 +98,11 @@ rosdep install --from-paths src --ignore-src -r -y
 ```bash
 cd ~/ros2_ws
 source /opt/ros/humble/setup.bash
-colcon build --symlink-install --packages-select urdf_xacro_tuner
+colcon build --packages-select urdf_xacro_tuner
 source install/setup.bash
 ```
+
+`launch/`、`rviz/`、`STL/` まで share 配下へ入れるため、この手順では通常 build を使います。
 
 ## 起動方法
 
@@ -112,8 +114,8 @@ GUI は ROS 2 launch から起動できます。これが推奨です。
 source /opt/ros/humble/setup.bash
 source ~/ros2_ws/install/setup.bash
 ros2 launch urdf_xacro_tuner gui.launch.py \
-  urdf:=/home/ubuntu/ros2_ws/src/dual_arm_robot_description/urdf/dual_arm_robot.xacro \
-  package_root:=/home/ubuntu/ros2_ws/src
+  urdf:=/path/to/your_robot_description/urdf/your_robot.xacro \
+  package_root:=/path/to/your_workspace/src
 ```
 
 - `urdf` は開きたい URDF / xacro のパスです。
@@ -123,14 +125,14 @@ ros2 launch urdf_xacro_tuner gui.launch.py \
 ### 直接起動
 
 ```bash
-ros2 run urdf_xacro_tuner urdf-xacro-tuner-gui --urdf /home/ubuntu/ros2_ws/src/dual_arm_robot_description/urdf/dual_arm_robot.xacro --package-root /home/ubuntu/ros2_ws/src
+ros2 run urdf_xacro_tuner urdf-xacro-tuner-gui --urdf /path/to/your_robot_description/urdf/your_robot.xacro --package-root /path/to/your_workspace/src
 ```
 
 ### CLI で使う
 
 ```bash
-ros2 run urdf_xacro_tuner urdf-xacro-tuner-cli scan /path/to/model.xacro --package-root ~/ros2_ws/src --expand-xacro
-ros2 run urdf_xacro_tuner urdf-xacro-tuner-cli apply /path/to/model.xacro --package-root ~/ros2_ws/src --mass base_link=3.2
+ros2 run urdf_xacro_tuner urdf-xacro-tuner-cli scan /path/to/model.xacro --package-root /path/to/your_workspace/src --expand-xacro
+ros2 run urdf_xacro_tuner urdf-xacro-tuner-cli apply /path/to/model.xacro --package-root /path/to/your_workspace/src --mass base_link=3.2
 ros2 run urdf_xacro_tuner urdf-xacro-tuner-cli check /path/to/model.urdf
 ```
 
