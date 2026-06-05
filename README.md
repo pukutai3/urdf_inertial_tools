@@ -2,6 +2,8 @@
 
 GitHub アカウント `pukutai3` で公開している `urdf_xacro_tuner` は、URDF / xacro の link 質量、慣性、joint 設定を編集し、その場で確認するための ROS 2 ツールです。
 
+最終更新日: 2026-06-05
+
 - `質量/慣性` タブで link ごとの質量を入力し、手元の STL から `<inertial>` を自動計算して元ファイルへ反映できます。
 - `ジョイント` タブで joint type、limit、dynamics を編集できます。
 - 3D 確認は GUI 内で完結します。RViz は必須ではありません。
