@@ -33,6 +33,3 @@ qtcreator-*
 *.preview.urdf
 
 # Local sample or legacy visualization assets
-STL/
-rviz/
-launch/
