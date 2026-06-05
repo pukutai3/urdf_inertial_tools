@@ -7,7 +7,7 @@
   <maintainer email="ubuntu@todo.todo">ubuntu</maintainer>
   <license>MIT</license>
 
-  <buildtool_depend>ament_python</buildtool_depend>
+  <buildtool_depend>python3-setuptools</buildtool_depend>
 
   <exec_depend>python3</exec_depend>
   <exec_depend>python3-numpy</exec_depend>
