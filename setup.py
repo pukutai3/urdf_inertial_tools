@@ -1,9 +1,15 @@
+import os
 from glob import glob
 from pathlib import Path
 from setuptools import find_packages, setup
 
 package_name = 'urdf_xacro_tuner'
 base_dir = Path(__file__).resolve().parent
+
+
+def relpaths(pattern: str) -> list[str]:
+    files = sorted(base_dir.glob(pattern))
+    return [os.path.relpath(path, Path.cwd()) for path in files]
 
 setup(
     name=package_name,
@@ -14,9 +20,9 @@ setup(
          ['resource/' + package_name]),
         ('share/' + package_name,
          ['package.xml']),
-        ('share/' + package_name + '/launch', glob(str(base_dir / 'launch' / '*.py'))),
-        ('share/' + package_name + '/rviz', glob(str(base_dir / 'rviz' / '*.rviz'))),
-        ('share/' + package_name + '/STL', glob(str(base_dir / 'STL' / '*.stl'))),
+        ('share/' + package_name + '/launch', relpaths('launch/*.py')),
+        ('share/' + package_name + '/rviz', relpaths('rviz/*.rviz')),
+        ('share/' + package_name + '/STL', relpaths('STL/*.stl')),
     ],
     install_requires=[
         'setuptools',
