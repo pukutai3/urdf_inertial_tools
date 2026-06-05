@@ -1,30 +1,28 @@
-﻿import os
-import trimesh
+import os
 import math
+from pathlib import Path
 
+import trimesh
+
+from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
-from ament_index_python.packages import get_package_share_directory
 
 MM_TO_M = 0.001
 
 
 def launch_setup(context, *args, **kwargs):
     # ---- launch arguments ----
-    stl_name = LaunchConfiguration('stl').perform(context)
+    stl_value = LaunchConfiguration('stl').perform(context).strip()
+    if not stl_value:
+        raise RuntimeError('stl launch argument is required')
+    stl_path = Path(stl_value).expanduser().resolve()
     mass_value = float(LaunchConfiguration('mass').perform(context))
     unit = LaunchConfiguration('unit').perform(context)
 
-    # ---- STL path ----
-    stl_dir = os.path.join(
-        os.path.expanduser('~'),
-        'ros2_ws/src/urdf_xacro_tuner/STL'
-    )
-    stl_path = os.path.join(stl_dir, stl_name)
-
-    if not os.path.isfile(stl_path):
+    if not stl_path.is_file():
         raise RuntimeError(f'STL file not found: {stl_path}')
 
     # ---- mass conversion ----
@@ -36,7 +34,7 @@ def launch_setup(context, *args, **kwargs):
         raise RuntimeError('unit must be g or kg')
 
     # ---- load STL (mm → m) ----
-    mesh = trimesh.load_mesh(stl_path)
+    mesh = trimesh.load_mesh(str(stl_path))
     if not mesh.is_watertight:
         raise RuntimeError('STL mesh is not watertight')
 
@@ -58,8 +56,8 @@ def launch_setup(context, *args, **kwargs):
     print(f'  ixx={inertia[0][0]:.6e}, ixy={inertia[0][1]:.6e}, ixz={inertia[0][2]:.6e}')
     print(f'  iyy={inertia[1][1]:.6e}, iyz={inertia[1][2]:.6e}')
     print(f'  izz={inertia[2][2]:.6e}')
-    print('=================================================')    
-    print('')  
+    print('=================================================')
+    print('')
     print('xacro/ URDF')
     print('    <inertial>')
     print(f'      <origin xyz="{com[0]:.6f} {com[1]:.2f} {com[2]:.6f}"/>')
@@ -68,7 +66,7 @@ def launch_setup(context, *args, **kwargs):
     print(f'        ixx="{inertia[0][0]:.6e}" iyy="{inertia[1][1]:.6e}" izz="{inertia[2][2]:.6e}"')
     print(f'        ixy="{inertia[0][1]:.6e}" iyz="{inertia[1][2]:.6e}" ixz="{inertia[0][2]:.6e}"/>')
     print('    </inertial>')
-    print('') 
+    print('')
     print('=================================================')
     print('')
 
@@ -143,10 +141,8 @@ def launch_setup(context, *args, **kwargs):
 
 def generate_launch_description():
     return LaunchDescription([
-        DeclareLaunchArgument('stl', default_value='model.stl'),
+        DeclareLaunchArgument('stl', default_value=''),
         DeclareLaunchArgument('mass', default_value='3.2'),
         DeclareLaunchArgument('unit', default_value='g'),
         OpaqueFunction(function=launch_setup),
     ])
-
-

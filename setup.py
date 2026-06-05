@@ -37,7 +37,6 @@ setup(
          ['package.xml']),
         ('share/' + package_name + '/launch', relpaths('launch/*.py')),
         ('share/' + package_name + '/rviz', relpaths('rviz/*.rviz')),
-        ('share/' + package_name + '/STL', relpaths('STL/*.stl')),
     ],
     install_requires=[
         'setuptools',

@@ -2,7 +2,7 @@
 
 `urdf_xacro_tuner` は、URDF / xacro の link 質量、慣性、joint 設定を編集し、その場で確認するための ROS 2 ツールです。
 
-- `質量/慣性` タブで link ごとの質量を入力し、STL から `<inertial>` を自動計算して元ファイルへ反映できます。
+- `質量/慣性` タブで link ごとの質量を入力し、手元の STL から `<inertial>` を自動計算して元ファイルへ反映できます。
 - `ジョイント` タブで joint type、limit、dynamics を編集できます。
 - 3D 確認は GUI 内で完結します。RViz は必須ではありません。
 - xacro を開いた場合は、展開済み URDF を別生成するのではなく、元の xacro / include を直接編集します。
@@ -81,7 +81,7 @@ python3 -m pip install --user --upgrade trimesh
 ```bash
 mkdir -p ~/ros2_ws/src
 cd ~/ros2_ws/src
-git clone https://github.com/pukutai3/urdf_inertial_tools.git urdf_inertial_tools
+git clone https://github.com/pukutai3/urdf_xacro_tuner.git urdf_xacro_tuner
 ```
 
 ### 4. rosdep で不足依存を補完
@@ -102,7 +102,7 @@ colcon build --packages-select urdf_xacro_tuner
 source install/setup.bash
 ```
 
-`launch/`、`rviz/`、`STL/` まで share 配下へ入れるため、この手順では通常 build を使います。
+`launch/` と `rviz/` を share 配下へ入れるため、この手順では通常 build を使います。
 
 ## 起動方法
 
@@ -165,7 +165,7 @@ ros2 run urdf_xacro_tuner urdf-xacro-tuner-cli check /path/to/model.urdf
 
 - `gui.launch.py`: 編集 GUI を起動します。
 - `preview_link.launch.py`: 単一 link のプレビュー用です。
-- `view_stl_auto.launch.py`: STL と慣性情報の確認用です。
+- `view_stl_auto.launch.py`: 任意の STL ファイルと慣性情報の確認用です。`stl:=/path/to/model.stl` を指定してください。
 
 ## よくある確認
 
@@ -195,6 +195,6 @@ sudo apt install -y python3-vtk9
 
 ## 備考
 
-- このリポジトリ名は `urdf_inertial_tools` ですが、Python module / ROS package 名は `urdf_xacro_tuner` です。
+- リポジトリ名、Python module 名、ROS package 名は `urdf_xacro_tuner` で揃えています。
 - 既存コマンド互換の entry point も残しています。
 - 編集対象の元ファイルは、GUI 上で選択した xacro / URDF そのものです。
