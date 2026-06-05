@@ -1,6 +1,6 @@
-# urdf_xacro_tuner
+# pukutai3 / urdf_xacro_tuner
 
-`urdf_xacro_tuner` は、URDF / xacro の link 質量、慣性、joint 設定を編集し、その場で確認するための ROS 2 ツールです。
+GitHub アカウント `pukutai3` で公開している `urdf_xacro_tuner` は、URDF / xacro の link 質量、慣性、joint 設定を編集し、その場で確認するための ROS 2 ツールです。
 
 - `質量/慣性` タブで link ごとの質量を入力し、手元の STL から `<inertial>` を自動計算して元ファイルへ反映できます。
 - `ジョイント` タブで joint type、limit、dynamics を編集できます。
@@ -197,6 +197,6 @@ sudo apt install -y python3-vtk9
 
 ## 備考
 
-- リポジトリ名、Python module 名、ROS package 名は `urdf_xacro_tuner` で揃えています。
+- GitHub の所有者は `pukutai3`、リポジトリ名、Python module 名、ROS package 名は `urdf_xacro_tuner` で揃えています。
 - 既存コマンド互換の entry point も残しています。
 - 編集対象の元ファイルは、GUI 上で選択した xacro / URDF そのものです。
