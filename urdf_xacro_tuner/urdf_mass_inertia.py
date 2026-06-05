@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import ast
 import copy
 import csv
@@ -23,6 +24,7 @@ import trimesh
 
 EPS = 1.0e-12
 XACRO_NS = "http://www.ros.org/wiki/xacro"
+MESH_VISIBILITY_COMMENT_PREFIX = "urdf_xacro_tuner_hidden_mesh"
 
 
 @dataclass
@@ -150,6 +152,102 @@ def format_float(value: float) -> str:
     if abs(value) < 5.0e-15:
         value = 0.0
     return f"{value:.9g}"
+
+
+def render_xacro_element(element: ET.Element, env: dict[str, object] | None) -> ET.Element:
+    rendered = copy.deepcopy(element)
+    if env is None:
+        return rendered
+
+    for node in rendered.iter():
+        for key, value in list(node.attrib.items()):
+            if isinstance(value, str):
+                substituted = substitute_xacro_text(value, env)
+                if substituted is not None:
+                    node.set(key, substituted)
+        if isinstance(node.text, str):
+            substituted_text = substitute_xacro_text(node.text, env)
+            if substituted_text is not None:
+                node.text = substituted_text
+    return rendered
+
+
+def encode_hidden_mesh_comment(source: str, element: ET.Element, env: dict[str, object] | None = None) -> ET.Element:
+    payload = base64.b64encode(ET.tostring(render_xacro_element(element, env), encoding="utf-8")).decode("ascii")
+    return ET.Comment(f"{MESH_VISIBILITY_COMMENT_PREFIX}|{source}|{payload}")
+
+
+def decode_hidden_mesh_comment(node: ET.Element) -> tuple[str, ET.Element] | None:
+    if isinstance(node.tag, str):
+        return None
+    text = (node.text or "").strip()
+    prefix = f"{MESH_VISIBILITY_COMMENT_PREFIX}|"
+    if not text.startswith(prefix):
+        return None
+    parts = text.split("|", 2)
+    if len(parts) != 3:
+        return None
+    source = parts[1]
+    try:
+        xml = base64.b64decode(parts[2].encode("ascii")).decode("utf-8")
+        element = ET.fromstring(xml)
+    except Exception:
+        return None
+    return source, element
+
+
+def iter_link_mesh_nodes(link: ET.Element, source: str) -> Iterable[ET.Element]:
+    direct_nodes = [node for node in direct_children(link, source)]
+    if direct_nodes:
+        yield from direct_nodes
+        return
+    for child in list(link):
+        decoded = decode_hidden_mesh_comment(child)
+        if decoded is None:
+            continue
+        comment_source, element = decoded
+        if comment_source == source:
+            yield element
+
+
+def set_link_mesh_visibility(link: ET.Element, show_mesh: bool, env: dict[str, object] | None = None) -> None:
+    if show_mesh:
+        for index, child in enumerate(list(link)):
+            decoded = decode_hidden_mesh_comment(child)
+            if decoded is None:
+                continue
+            source, element = decoded
+            if local_name(element.tag) not in {"visual", "collision"}:
+                continue
+            link.remove(child)
+            link.insert(index, element)
+        return
+
+    for source in ("visual", "collision"):
+        for node in list(direct_children(link, source)):
+            index = list(link).index(node)
+            link.remove(node)
+            link.insert(index, encode_hidden_mesh_comment(source, node, env))
+
+
+def link_mesh_visible(link: ET.Element) -> bool:
+    visible = False
+    hidden = False
+    for child in list(link):
+        if local_name(child.tag) in {"visual", "collision"}:
+            visible = True
+            continue
+        decoded = decode_hidden_mesh_comment(child)
+        if decoded is None:
+            continue
+        _source, element = decoded
+        if local_name(element.tag) in {"visual", "collision"}:
+            hidden = True
+    if visible:
+        return True
+    if hidden:
+        return False
+    return True
 
 
 def rotation_matrix_from_rpy(rpy: np.ndarray) -> np.ndarray:
@@ -511,7 +609,7 @@ def extract_mesh_refs(
 ) -> list[MeshRef]:
     refs: list[MeshRef] = []
     for source in ("collision", "visual"):
-        for node in direct_children(link, source):
+        for node in iter_link_mesh_nodes(link, source):
             mesh = first_child(first_child(node, "geometry"), "mesh")
             if mesh is None:
                 continue
@@ -568,7 +666,7 @@ def scan_urdf(
 def source_mesh_count(link: ET.Element) -> int:
     for source in ("collision", "visual"):
         count = 0
-        for node in direct_children(link, source):
+        for node in iter_link_mesh_nodes(link, source):
             mesh = first_child(first_child(node, "geometry"), "mesh")
             if mesh is not None and mesh.get("filename"):
                 count += 1
@@ -1138,6 +1236,110 @@ def apply_inertial_results_to_xacro_sources(
     return report
 
 
+def apply_mesh_visibility_to_urdf(
+    urdf_path: Path,
+    visibility_updates: dict[str, bool],
+    backup: bool = True,
+) -> JointApplyReport:
+    tree = parse_urdf(urdf_path)
+    report = JointApplyReport(output_path=urdf_path)
+    seen: set[str] = set()
+    for link in direct_link_elements(tree.getroot()):
+        name = link.get("name") or ""
+        seen.add(name)
+        if name not in visibility_updates:
+            continue
+        set_link_mesh_visibility(link, visibility_updates[name], None)
+        report.updated.append(name)
+    for name in visibility_updates:
+        if name not in seen:
+            report.skipped[name] = ["link not found"]
+    if not report.updated:
+        return report
+    if backup:
+        backup_path = urdf_path.with_suffix(urdf_path.suffix + ".bak")
+        shutil.copy2(urdf_path, backup_path)
+        report.backup_path = backup_path
+        report.backup_paths.append(backup_path)
+    ET.indent(tree, space="  ")
+    tree.write(urdf_path, encoding="utf-8", xml_declaration=True)
+    return report
+
+
+def apply_mesh_visibility_to_xacro_sources(
+    xacro_path: Path,
+    visibility_updates: dict[str, bool],
+    package_roots: Iterable[Path] | None = None,
+    backup: bool = True,
+) -> JointApplyReport:
+    report = JointApplyReport(output_path=xacro_path)
+    if not visibility_updates:
+        return report
+
+    macros: dict[str, MacroDef] = {}
+    properties: dict[str, object] = {}
+    top_level = collect_xacro_definitions(xacro_path, macros, properties, package_roots, set())
+    source_trees: dict[Path, ET.ElementTree] = {}
+    source_link_owner: dict[tuple[Path, int], str] = {}
+    seen: set[str] = set()
+    direct_tree = parse_urdf(xacro_path)
+
+    for element in top_level:
+        if is_xacro_element(element):
+            for expanded_name, source_link, _env, macro in iter_xacro_macro_link_targets(
+                element, properties, macros
+            ):
+                show_mesh = visibility_updates.get(expanded_name)
+                if show_mesh is None:
+                    continue
+                if expanded_name in seen:
+                    continue
+                if macro.source_path is None or macro.source_tree is None:
+                    report.skipped[expanded_name] = ["xacro macro source file is unknown"]
+                    continue
+                source_key = (macro.source_path, id(source_link))
+                if source_key in source_link_owner:
+                    report.skipped[expanded_name] = [
+                        f"same xacro macro link already updated from {source_link_owner[source_key]}"
+                    ]
+                    continue
+                set_link_mesh_visibility(source_link, show_mesh, _env)
+                source_link_owner[source_key] = expanded_name
+                source_trees[macro.source_path] = macro.source_tree
+                seen.add(expanded_name)
+                report.updated.append(expanded_name)
+            continue
+
+        for link in iter_link_elements(element):
+            expanded_name = substitute_xacro_text(link.get("name"), properties) or link.get("name") or ""
+            show_mesh = visibility_updates.get(expanded_name)
+            if show_mesh is None or expanded_name in seen:
+                continue
+            set_link_mesh_visibility(link, show_mesh, properties)
+            source_trees[xacro_path] = direct_tree
+            seen.add(expanded_name)
+            report.updated.append(expanded_name)
+
+    for name in visibility_updates:
+        if name not in seen and name not in report.skipped:
+            report.skipped[name] = ["matching xacro source link was not found"]
+
+    if not report.updated:
+        return report
+
+    for source_path, tree in source_trees.items():
+        if backup:
+            backup_path = source_path.with_suffix(source_path.suffix + ".bak")
+            shutil.copy2(source_path, backup_path)
+            report.backup_paths.append(backup_path)
+            if report.backup_path is None:
+                report.backup_path = backup_path
+        ET.indent(tree, space="  ")
+        tree.write(source_path, encoding="utf-8", xml_declaration=True)
+
+    return report
+
+
 def find_direct_link(tree: ET.ElementTree, link_name: str) -> ET.Element | None:
     for link in direct_link_elements(tree.getroot()):
         if link.get("name") == link_name:
@@ -1169,6 +1371,7 @@ def write_single_link_preview_urdf(
     output_path: Path,
     package_roots: Iterable[Path] | None = None,
     expand_xacro: bool = False,
+    show_mesh: bool = True,
 ) -> None:
     tree = expand_xacro_to_tree(source_path, package_roots) if expand_xacro else parse_urdf(source_path)
     source_link = find_direct_link(tree, link_name)
@@ -1177,7 +1380,12 @@ def write_single_link_preview_urdf(
 
     preview_link = copy.deepcopy(source_link)
     preview_link.set("name", "base_link")
-    rewrite_meshes_to_file_uri(preview_link, source_path, package_roots)
+    if show_mesh:
+        rewrite_meshes_to_file_uri(preview_link, source_path, package_roots)
+    else:
+        for source in ("visual", "collision"):
+            for node in list(direct_children(preview_link, source)):
+                preview_link.remove(node)
 
     robot = ET.Element("robot", {"name": f"inertia_preview_{link_name}"})
     robot.append(preview_link)
@@ -1334,6 +1542,7 @@ def apply_masses_to_xacro_sources(
 
 JOINT_LIMIT_FIELDS = ("lower", "upper", "effort", "velocity")
 JOINT_DYNAMICS_FIELDS = ("damping", "friction")
+JOINT_TYPE_VALUES = ("fixed", "revolute", "continuous", "prismatic", "floating", "planar")
 
 
 def set_or_clear_attrs(parent: ET.Element, child_name: str, values: dict[str, str], fields: tuple[str, ...]) -> None:
@@ -1354,12 +1563,18 @@ def set_or_clear_attrs(parent: ET.Element, child_name: str, values: dict[str, st
 
 
 def set_joint_properties(joint: ET.Element, values: dict[str, str]) -> None:
+    joint_type = values.get("type", "").strip()
+    if joint_type:
+        joint.set("type", joint_type)
     set_or_clear_attrs(joint, "limit", values, JOINT_LIMIT_FIELDS)
     set_or_clear_attrs(joint, "dynamics", values, JOINT_DYNAMICS_FIELDS)
 
 
 def validate_joint_update_values(values: dict[str, str]) -> list[str]:
     messages: list[str] = []
+    joint_type = values.get("type", "").strip().lower()
+    if joint_type and joint_type not in JOINT_TYPE_VALUES:
+        messages.append(f"type must be one of {', '.join(JOINT_TYPE_VALUES)}")
     for key in (*JOINT_LIMIT_FIELDS, *JOINT_DYNAMICS_FIELDS):
         value = values.get(key, "").strip()
         if not value:
