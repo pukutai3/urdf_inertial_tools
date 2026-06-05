@@ -5,7 +5,7 @@ GitHub アカウント `pukutai3` で公開している `urdf_xacro_tuner` は�
 最終更新日: 2026-06-05
 
 - `質量/慣性` タブで link ごとの質量を入力し、手元の STL から `<inertial>` を自動計算して元ファイルへ反映できます。
-- `ジョイント` タブで joint type、limit、dynamics を編集できます。
+- `ジョイント` タブで joint type、limit、dynamics を編集でき、回転方向の反転もできます。
 - 3D 確認は GUI 内で完結します。RViz は必須ではありません。
 - xacro を開いた場合は、展開済み URDF を別生成するのではなく、元の xacro / include を直接編集します。
 

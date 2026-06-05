@@ -63,6 +63,7 @@ class JointSummary:
     joint_type: str
     parent: str
     child: str
+    axis: str
     lower: str
     upper: str
     effort: str
@@ -82,6 +83,7 @@ class XacroSourceJointSummary:
     joint_type: str
     parent: str
     child: str
+    axis: str
     lower: str
     upper: str
     effort: str
@@ -307,6 +309,23 @@ def child_attr(element: ET.Element | None, child_name: str, attr_name: str) -> s
     if child is None:
         return ""
     return child.get(attr_name) or ""
+
+
+def joint_axis_vector(joint: ET.Element) -> np.ndarray:
+    axis = child_attr(joint, "axis", "xyz").strip()
+    if not axis:
+        return np.array([1.0, 0.0, 0.0], dtype=float)
+    try:
+        return parse_vector(axis, (1.0, 0.0, 0.0))
+    except ValueError:
+        return np.array([1.0, 0.0, 0.0], dtype=float)
+
+
+def set_joint_axis_vector(joint: ET.Element, axis: np.ndarray) -> None:
+    axis_child = first_child(joint, "axis")
+    if axis_child is None:
+        axis_child = ET.SubElement(joint, "axis")
+    axis_child.set("xyz", " ".join(format_float(float(value)) for value in axis))
 
 
 def direct_link_elements(root: ET.Element) -> list[ET.Element]:
@@ -743,6 +762,7 @@ def joint_summary_from_element(name: str, joint: ET.Element) -> JointSummary:
         joint_type=joint_type,
         parent=parent,
         child=child,
+        axis=" ".join(format_float(float(value)) for value in joint_axis_vector(joint)),
         lower=child_attr(joint, "limit", "lower"),
         upper=child_attr(joint, "limit", "upper"),
         effort=child_attr(joint, "limit", "effort"),
@@ -845,6 +865,7 @@ def scan_xacro_source_joints(
                         joint_type=summary.joint_type,
                         parent=summary.parent,
                         child=summary.child,
+                        axis=summary.axis,
                         lower=summary.lower,
                         upper=summary.upper,
                         effort=summary.effort,
@@ -878,6 +899,7 @@ def scan_xacro_source_joints(
                 joint_type=summary.joint_type,
                 parent=summary.parent,
                 child=summary.child,
+                axis=summary.axis,
                 lower=summary.lower,
                 upper=summary.upper,
                 effort=summary.effort,
@@ -1570,6 +1592,24 @@ def set_joint_properties(joint: ET.Element, values: dict[str, str]) -> None:
     set_or_clear_attrs(joint, "dynamics", values, JOINT_DYNAMICS_FIELDS)
 
 
+def prepare_joint_update_values(joint: ET.Element, values: dict[str, str]) -> tuple[dict[str, str], bool]:
+    prepared = dict(values)
+    reverse_axis = prepared.pop("reverse_axis", "").strip().lower() in {"1", "true", "yes", "on"}
+    effective_type = (prepared.get("type", "").strip() or (joint.get("type") or "")).strip().lower()
+    if reverse_axis and effective_type in {"revolute", "continuous"}:
+        lower = prepared.get("lower", "").strip()
+        upper = prepared.get("upper", "").strip()
+        if lower and upper:
+            prepared["lower"] = format_float(-float(upper))
+            prepared["upper"] = format_float(-float(lower))
+        else:
+            if lower:
+                prepared["lower"] = format_float(-float(lower))
+            if upper:
+                prepared["upper"] = format_float(-float(upper))
+    return prepared, reverse_axis and effective_type in {"revolute", "continuous"}
+
+
 def validate_joint_update_values(values: dict[str, str]) -> list[str]:
     messages: list[str] = []
     joint_type = values.get("type", "").strip().lower()
@@ -1607,11 +1647,14 @@ def apply_joint_properties_to_urdf(
         seen.add(name)
         if name not in updates:
             continue
-        errors = validate_joint_update_values(updates[name])
+        values, reverse_axis = prepare_joint_update_values(joint, updates[name])
+        errors = validate_joint_update_values(values)
         if errors:
             report.skipped[name] = errors
             continue
-        set_joint_properties(joint, updates[name])
+        if reverse_axis:
+            set_joint_axis_vector(joint, -joint_axis_vector(joint))
+        set_joint_properties(joint, values)
         report.updated.append(name)
     for name in updates:
         if name not in seen:
@@ -1671,7 +1714,14 @@ def apply_joint_properties_to_xacro_sources(
                     f"same xacro macro joint already updated from {source_joint_owner[source_key]}"
                 ]
                 continue
-            set_joint_properties(source_joint, values)
+            prepared_values, reverse_axis = prepare_joint_update_values(source_joint, values)
+            errors = validate_joint_update_values(prepared_values)
+            if errors:
+                report.skipped[expanded_name] = errors
+                continue
+            if reverse_axis:
+                set_joint_axis_vector(source_joint, -joint_axis_vector(source_joint))
+            set_joint_properties(source_joint, prepared_values)
             source_joint_owner[source_key] = expanded_name
             source_trees[macro.source_path] = macro.source_tree
             seen.add(expanded_name)
@@ -1683,7 +1733,14 @@ def apply_joint_properties_to_xacro_sources(
         values = valid_updates.get(expanded_name)
         if values is None or expanded_name in seen:
             continue
-        set_joint_properties(source_joint, values)
+        prepared_values, reverse_axis = prepare_joint_update_values(source_joint, values)
+        errors = validate_joint_update_values(prepared_values)
+        if errors:
+            report.skipped[expanded_name] = errors
+            continue
+        if reverse_axis:
+            set_joint_axis_vector(source_joint, -joint_axis_vector(source_joint))
+        set_joint_properties(source_joint, prepared_values)
         source_trees[xacro_path] = direct_tree
         seen.add(expanded_name)
         report.updated.append(expanded_name)

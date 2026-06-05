@@ -943,9 +943,18 @@ class InertiaEditor(tk.Tk):
             command=self.update_joint_edit_state,
         )
         self.allow_joint_edit_check.pack(anchor=tk.W, pady=(0, 10))
+        self.reverse_joint_axis_var = tk.BooleanVar(value=False)
+        self.reverse_joint_axis_check = ttk.Checkbutton(
+            edit_frame,
+            text="回転方向を反転",
+            variable=self.reverse_joint_axis_var,
+            command=self.update_joint_edit_state,
+        )
+        self.reverse_joint_axis_check.pack(anchor=tk.W, pady=(0, 10))
         self.joint_edit_widgets: list[tk.Widget] = []
         self.joint_edit_widgets.append(self.joint_angle_unit_combo)
         self.joint_edit_widgets.append(self.joint_type_combo)
+        self.joint_edit_widgets.append(self.reverse_joint_axis_check)
         self.joint_field_vars: dict[str, tk.StringVar] = {}
         for label, key in (
             ("下限", "lower"),
@@ -1714,6 +1723,7 @@ class InertiaEditor(tk.Tk):
         joint_type = self.joint_tree.set(item_id, "type")
         current_unit = self.joint_angle_unit()
         self.joint_type_var.set(joint_type or "revolute")
+        self.reverse_joint_axis_var.set(False)
         for key in ("lower", "upper", "effort", "velocity", "damping", "friction"):
             value = self.joint_tree.set(item_id, key)
             if key in ("lower", "upper") and self.joint_uses_angle(joint_type):
@@ -1744,6 +1754,8 @@ class InertiaEditor(tk.Tk):
         joint = self.selected_joint()
         if joint is None:
             return
+        if not self.joint_uses_angle(self.joint_type_var.get()):
+            self.reverse_joint_axis_var.set(False)
         self.update_joint_edit_state()
     def on_joint_select(self, _event: object | None = None) -> None:
         joint = self.selected_joint()
@@ -1752,6 +1764,7 @@ class InertiaEditor(tk.Tk):
             for var in self.joint_field_vars.values():
                 var.set("")
             self.joint_type_var.set("revolute")
+            self.reverse_joint_axis_var.set(False)
             self.allow_joint_edit_var.set(False)
             self.update_joint_edit_state()
             return
@@ -1771,12 +1784,17 @@ class InertiaEditor(tk.Tk):
         if hasattr(self, "allow_joint_edit_check"): 
             self.allow_joint_edit_check.configure(state=tk.NORMAL if has_joint else tk.DISABLED)
         enabled = has_joint and self.allow_joint_edit_var.get()
+        reverse_enabled = enabled and self.joint_uses_angle(self.joint_type_var.get())
         for widget in self.joint_edit_widgets:
             widget.configure(state=tk.NORMAL if enabled else tk.DISABLED)
         if hasattr(self, "joint_type_combo"): 
             self.joint_type_combo.configure(state="readonly" if enabled else tk.DISABLED)
         if hasattr(self, "joint_angle_unit_combo"): 
             self.joint_angle_unit_combo.configure(state="readonly" if enabled else tk.DISABLED)
+        if hasattr(self, "reverse_joint_axis_check"):
+            self.reverse_joint_axis_check.configure(state=tk.NORMAL if reverse_enabled else tk.DISABLED)
+        if not reverse_enabled:
+            self.reverse_joint_axis_var.set(False)
         if not hasattr(self, "joint_status_var"):
             return
         if not has_joint:
@@ -1799,6 +1817,8 @@ class InertiaEditor(tk.Tk):
             unit = self.joint_angle_unit()
             for key in ("lower", "upper"):
                 values[key] = self.convert_joint_angle_value(values[key], unit, "rad")
+            if self.reverse_joint_axis_var.get():
+                values["reverse_axis"] = "true"
         return values
 
     def set_joint_properties(self) -> None:
@@ -1846,6 +1866,7 @@ class InertiaEditor(tk.Tk):
     def clear_joint_fields(self) -> None:
         for var in self.joint_field_vars.values():
             var.set("")
+        self.reverse_joint_axis_var.set(False)
 
     def on_select(self, _event: object | None = None) -> None:
         link = self.selected_link()
